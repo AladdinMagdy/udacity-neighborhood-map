@@ -7,7 +7,8 @@ class App extends Component {
   state = {
     venues: [],
     visibleVenues: [],
-    query: ""
+    query: "",
+    menu: "closed"
   };
 
   componentDidMount() {
@@ -21,15 +22,14 @@ class App extends Component {
     window.initMap = this.initMap;
   };
 
+  // The first function to be called after map loads.. this function is to fetch data from foursquare
   getVenues = () => {
-    const self = this;
     fetch(
       "https://api.foursquare.com/v2/venues/explore?client_id=FNIB25PW25FZ1SM44ZSXRZ53BI30SBM2X3E5OXQ1DRKT3GBZ&client_secret=HLEGTIU4QCAW0N45AKJUQHGKF3LQK4YPB1Z1F0MTHAYXD2SP&v=20180323&near=Chicago&query=coffee"
     )
       .then(response => response.json())
       .then(myJson => {
-        console.log(myJson);
-        self.setState(
+        this.setState(
           {
             venues: myJson.response.groups[0].items,
             visibleVenues: myJson.response.groups[0].items
@@ -39,18 +39,24 @@ class App extends Component {
       })
       .catch(err => {
         console.log("error: " + err);
+        this.setState({
+          err
+        });
       });
   };
 
+  // the initMap function required for google map api to work
   initMap = () => {
+    //make map
     var map = new window.google.maps.Map(document.getElementById("map"), {
       center: { lat: 41.881832, lng: -87.623177 },
       zoom: 11
     });
 
+    //make info PopUp
     var infowindow = new window.google.maps.InfoWindow();
 
-    const loc = [];
+    // Add marker for every venue on map
     this.state.venues.forEach(myVenue => {
       var marker = new window.google.maps.Marker({
         position: {
@@ -61,22 +67,31 @@ class App extends Component {
         title: myVenue.venue.name
       });
 
+      //stick an event listner to that marker
       marker.addListener("click", () => {
-        infowindow.setContent(`${myVenue.venue.name}`);
+        infowindow.setContent(
+          `<div>${myVenue.venue.name}<br/>${
+            myVenue.venue.location.address
+          }<br/>${myVenue.venue.categories[0].name}</div>`
+        );
         infowindow.open(map, marker);
       });
 
       myVenue.marker = marker;
       myVenue.display = true;
-      loc.push(myVenue);
 
       this.setState({
-        venue: myVenue
+        venue: myVenue,
+        infowindow
       });
     });
   };
 
+  // this function workes when user types in search
   filterVenues = q => {
+    //close any open info popups
+    this.state.infowindow.close();
+
     const match = new RegExp(escapeRegExp(q), "i");
     this.state.venues.forEach(el => {
       if (match.test(el.venue.name)) {
@@ -93,19 +108,52 @@ class App extends Component {
     });
   };
 
+  // function to handle clicking on list items
+  ListItemClick = e => {
+    this.state.infowindow.close();
+    const selected = this.state.visibleVenues.filter(
+      el => el.venue.name === e.target.attributes.name.value
+    )[0];
+    this.state.infowindow.setContent(
+      `<div>${selected.venue.name}<br/>${selected.venue.location.address}<br/>${
+        selected.venue.categories[0].name
+      }</div>`
+    );
+    this.state.infowindow.open(selected.marker.map, selected.marker);
+  };
+
+  handleMenuClick = () => {
+    this.setState({
+      menu: this.state.menu === "open" ? "closed" : "open"
+    });
+  };
+
   render() {
     return (
       <div className="app">
-        <div id="map" />
         <VenuesList
+          menu={this.state.menu}
           filterVenues={this.filterVenues}
           query={this.state.query}
           visibleVenues={this.state.visibleVenues}
+          ListItemClick={e => this.ListItemClick(e)}
+          error={this.state.err}
         />
+        <div className="map-container">
+          <a onClick={this.handleMenuClick} className="burger-menu">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M2 6h20v3H2zm0 5h20v3H2zm0 5h20v3H2z" />
+            </svg>
+          </a>
+          <div id="map" />
+        </div>
       </div>
     );
   }
 }
+window.errorHandler = () => {
+  alert("Seems like you are using an invalid api key");
+};
 function loadScript(url) {
   var index = window.document.getElementsByTagName("script")[0];
   var script = window.document.createElement("script");
@@ -113,9 +161,7 @@ function loadScript(url) {
   script.async = true;
   script.defer = true;
   index.parentNode.insertBefore(script, index);
-  script.onerror = () => {
-    document.write("Can't load Google Maps");
-  };
+  script.onerror = window.errorHandler;
 }
 
 export default App;
